@@ -277,6 +277,7 @@ pub fn find_cut_point(
     }
 }
 
+#[derive(Clone, Debug, PartialEq)]
 pub struct CompactionPreparation {
     pub first_kept_entry_id: String,
     pub messages_to_summarize: Vec<AgentMessage>,

@@ -1,7 +1,7 @@
+use crate::coding_agent::tools as agent_tools;
+use crate::core::messages::ContentBlock;
 use serde_json::{json, Value};
-use std::fs;
-use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::path::PathBuf;
 
 pub struct ToolContext {
     pub cwd: PathBuf,
@@ -66,123 +66,154 @@ pub fn default_tools() -> Vec<ToolDefinition> {
             input_schema: json!({
                 "type": "object",
                 "properties": {
-                    "command": { "type": "string", "description": "Bash command to execute" }
+                    "command": { "type": "string", "description": "Bash command to execute" },
+                    "timeout": { "type": "integer", "description": "Timeout in seconds (optional)" }
                 },
                 "required": ["command"],
                 "additionalProperties": false
             }),
             execute: bash_tool,
         },
+        ToolDefinition {
+            name: "grep",
+            description: "Search file contents for a pattern.",
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "pattern": { "type": "string", "description": "Search pattern (regex or literal string)" },
+                    "path": { "type": "string", "description": "Directory or file to search (default: current directory)" },
+                    "glob": { "type": "string", "description": "Filter files by glob pattern, e.g. '*.ts'" },
+                    "ignoreCase": { "type": "boolean", "description": "Case-insensitive search (default: false)" },
+                    "literal": { "type": "boolean", "description": "Treat pattern as literal string instead of regex (default: false)" },
+                    "context": { "type": "integer", "description": "Number of lines to show before and after each match (default: 0)" },
+                    "limit": { "type": "integer", "description": "Maximum number of matches to return (default: 100)" }
+                },
+                "required": ["pattern"],
+                "additionalProperties": false
+            }),
+            execute: grep_tool,
+        },
+        ToolDefinition {
+            name: "find",
+            description: "Search for files by glob pattern.",
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "pattern": { "type": "string", "description": "Glob pattern to match files, e.g. '*.ts' or '**/*.json'" },
+                    "path": { "type": "string", "description": "Directory to search in (default: current directory)" },
+                    "limit": { "type": "integer", "description": "Maximum number of results (default: 1000)" }
+                },
+                "required": ["pattern"],
+                "additionalProperties": false
+            }),
+            execute: find_tool,
+        },
+        ToolDefinition {
+            name: "ls",
+            description: "List directory contents.",
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "path": { "type": "string", "description": "Directory to list (default: current directory)" },
+                    "limit": { "type": "integer", "description": "Maximum number of entries to return (default: 500)" }
+                },
+                "additionalProperties": false
+            }),
+            execute: ls_tool,
+        },
     ]
-}
-
-fn resolve_path(path: &str, cwd: &Path) -> PathBuf {
-    let path = PathBuf::from(path);
-    if path.is_absolute() {
-        path
-    } else {
-        cwd.join(path)
-    }
 }
 
 fn read_tool(args: &Value, ctx: &ToolContext) -> Result<String, String> {
     let path = get_string_arg(args, "path")?;
-    let offset = get_i64_arg(args, "offset").map(|value| value.max(1) as usize);
-    let limit = get_i64_arg(args, "limit").map(|value| value.max(0) as usize);
-    let absolute_path = resolve_path(&path, &ctx.cwd);
-    let content = fs::read_to_string(&absolute_path)
-        .map_err(|err| format!("Failed to read {}: {}", path, err))?;
-    let lines: Vec<&str> = content.split('\n').collect();
-    if lines.is_empty() {
-        return Ok(String::new());
-    }
-
-    let start = offset.unwrap_or(1).saturating_sub(1);
-    if start >= lines.len() {
-        return Err(format!("Offset {} is beyond end of file", start + 1));
-    }
-    let end = match limit {
-        Some(limit) => (start + limit).min(lines.len()),
-        None => lines.len(),
-    };
-    Ok(lines[start..end].join("\n"))
+    let offset = get_optional_usize_arg(args, "offset");
+    let limit = get_optional_usize_arg(args, "limit");
+    let tool = agent_tools::ReadTool::new(&ctx.cwd);
+    let result = tool.execute(
+        "tool-call",
+        agent_tools::ReadToolArgs {
+            path,
+            offset,
+            limit,
+        },
+    )?;
+    Ok(tool_result_to_text(result))
 }
 
 fn write_tool(args: &Value, ctx: &ToolContext) -> Result<String, String> {
     let path = get_string_arg(args, "path")?;
     let content = get_string_arg(args, "content")?;
-    let absolute_path = resolve_path(&path, &ctx.cwd);
-    if let Some(parent) = absolute_path.parent() {
-        fs::create_dir_all(parent).map_err(|err| format!("Failed to create directory: {err}"))?;
-    }
-    fs::write(&absolute_path, content.as_bytes())
-        .map_err(|err| format!("Failed to write {}: {}", path, err))?;
-    Ok(format!("Wrote {} bytes to {}", content.len(), path))
+    let tool = agent_tools::WriteTool::new(&ctx.cwd);
+    let result = tool.execute("tool-call", agent_tools::WriteToolArgs { path, content })?;
+    Ok(tool_result_to_text(result))
 }
 
 fn edit_tool(args: &Value, ctx: &ToolContext) -> Result<String, String> {
     let path = get_string_arg(args, "path")?;
     let old_text = get_string_arg(args, "oldText")?;
     let new_text = get_string_arg(args, "newText")?;
-    let absolute_path = resolve_path(&path, &ctx.cwd);
-    let content = fs::read_to_string(&absolute_path)
-        .map_err(|err| format!("Failed to read {}: {}", path, err))?;
-    let matches: Vec<usize> = content
-        .match_indices(old_text.as_str())
-        .map(|(idx, _)| idx)
-        .collect();
-    if matches.is_empty() {
-        return Err(format!(
-            "Could not find the exact text in {}. The old text must match exactly.",
-            path
-        ));
-    }
-    if matches.len() > 1 {
-        return Err(format!(
-            "Found {} occurrences of the text in {}. The text must be unique.",
-            matches.len(),
-            path
-        ));
-    }
-    let index = matches[0];
-    let mut updated = String::with_capacity(content.len() - old_text.len() + new_text.len());
-    updated.push_str(&content[..index]);
-    updated.push_str(new_text.as_str());
-    updated.push_str(&content[index + old_text.len()..]);
-    if updated == content {
-        return Err(format!(
-            "No changes made to {}. The replacement produced identical content.",
-            path
-        ));
-    }
-    fs::write(&absolute_path, updated.as_bytes())
-        .map_err(|err| format!("Failed to write {}: {}", path, err))?;
-    Ok(format!("Successfully replaced text in {}.", path))
+    let tool = agent_tools::EditTool::new(&ctx.cwd);
+    let result = tool.execute(
+        "tool-call",
+        agent_tools::EditToolArgs {
+            path,
+            old_text,
+            new_text,
+        },
+    )?;
+    Ok(tool_result_to_text(result))
 }
 
 fn bash_tool(args: &Value, ctx: &ToolContext) -> Result<String, String> {
     let command = get_string_arg(args, "command")?;
-    let output = Command::new("bash")
-        .arg("-lc")
-        .arg(command)
-        .current_dir(&ctx.cwd)
-        .output()
-        .map_err(|err| format!("Failed to execute bash: {err}"))?;
-    let mut combined = String::new();
-    combined.push_str(&String::from_utf8_lossy(&output.stdout));
-    combined.push_str(&String::from_utf8_lossy(&output.stderr));
-    if !output.status.success() {
-        return Err(format!(
-            "Command exited with code {:?}\n{}",
-            output.status.code(),
-            combined.trim_end()
-        ));
-    }
-    if combined.is_empty() {
-        Ok("(no output)".to_string())
-    } else {
-        Ok(combined)
-    }
+    let timeout = get_optional_u64_arg(args, "timeout");
+    let tool = agent_tools::BashTool::new(&ctx.cwd);
+    let result = tool.execute("tool-call", agent_tools::BashToolArgs { command, timeout })?;
+    Ok(tool_result_to_text(result))
+}
+
+fn grep_tool(args: &Value, ctx: &ToolContext) -> Result<String, String> {
+    let pattern = get_string_arg(args, "pattern")?;
+    let tool = agent_tools::GrepTool::new(&ctx.cwd);
+    let result = tool.execute(
+        "tool-call",
+        agent_tools::GrepToolArgs {
+            pattern,
+            path: get_optional_string_arg(args, "path"),
+            glob: get_optional_string_arg(args, "glob"),
+            ignore_case: get_optional_bool_arg(args, "ignoreCase"),
+            literal: get_optional_bool_arg(args, "literal"),
+            context: get_optional_usize_arg(args, "context"),
+            limit: get_optional_usize_arg(args, "limit"),
+        },
+    )?;
+    Ok(tool_result_to_text(result))
+}
+
+fn find_tool(args: &Value, ctx: &ToolContext) -> Result<String, String> {
+    let pattern = get_string_arg(args, "pattern")?;
+    let tool = agent_tools::FindTool::new(&ctx.cwd);
+    let result = tool.execute(
+        "tool-call",
+        agent_tools::FindToolArgs {
+            pattern,
+            path: get_optional_string_arg(args, "path"),
+            limit: get_optional_usize_arg(args, "limit"),
+        },
+    )?;
+    Ok(tool_result_to_text(result))
+}
+
+fn ls_tool(args: &Value, ctx: &ToolContext) -> Result<String, String> {
+    let tool = agent_tools::LsTool::new(&ctx.cwd);
+    let result = tool.execute(
+        "tool-call",
+        agent_tools::LsToolArgs {
+            path: get_optional_string_arg(args, "path"),
+            limit: get_optional_usize_arg(args, "limit"),
+        },
+    )?;
+    Ok(tool_result_to_text(result))
 }
 
 fn get_string_arg(args: &Value, key: &str) -> Result<String, String> {
@@ -192,6 +223,42 @@ fn get_string_arg(args: &Value, key: &str) -> Result<String, String> {
         .ok_or_else(|| format!("Missing or invalid \"{}\" argument", key))
 }
 
-fn get_i64_arg(args: &Value, key: &str) -> Option<i64> {
-    args.get(key).and_then(|value| value.as_i64())
+fn get_optional_string_arg(args: &Value, key: &str) -> Option<String> {
+    args.get(key)
+        .and_then(|value| value.as_str())
+        .map(|value| value.to_string())
+}
+
+fn get_optional_bool_arg(args: &Value, key: &str) -> Option<bool> {
+    args.get(key).and_then(|value| value.as_bool())
+}
+
+fn get_optional_usize_arg(args: &Value, key: &str) -> Option<usize> {
+    args.get(key)
+        .and_then(|value| value.as_i64())
+        .and_then(|value| {
+            if value < 0 {
+                None
+            } else {
+                Some(value as usize)
+            }
+        })
+}
+
+fn get_optional_u64_arg(args: &Value, key: &str) -> Option<u64> {
+    args.get(key)
+        .and_then(|value| value.as_i64())
+        .and_then(|value| if value < 0 { None } else { Some(value as u64) })
+}
+
+fn tool_result_to_text(result: agent_tools::ToolResult) -> String {
+    result
+        .content
+        .iter()
+        .filter_map(|block| match block {
+            ContentBlock::Text { text, .. } => Some(text.as_str()),
+            _ => None,
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
 }

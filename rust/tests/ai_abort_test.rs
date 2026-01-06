@@ -27,6 +27,7 @@ fn should_abort_mid_stream() {
         &context,
         StreamOptions {
             signal: Some(controller.signal()),
+            reasoning_effort: None,
         },
     );
 
@@ -54,7 +55,14 @@ fn should_abort_mid_stream() {
         timestamp: now_millis(),
     }));
 
-    let follow_up = complete(&model, &context, StreamOptions { signal: None });
+    let follow_up = complete(
+        &model,
+        &context,
+        StreamOptions {
+            signal: None,
+            reasoning_effort: None,
+        },
+    );
     assert_eq!(follow_up.stop_reason, "stop");
     assert!(!follow_up.content.is_empty());
 }
@@ -79,6 +87,7 @@ fn should_handle_immediate_abort() {
         &context,
         StreamOptions {
             signal: Some(controller.signal()),
+            reasoning_effort: None,
         },
     );
     assert_eq!(response.stop_reason, "aborted");

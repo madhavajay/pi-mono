@@ -254,6 +254,14 @@ impl Agent {
         self.clear_follow_up_queue();
     }
 
+    pub fn pending_steering_count(&self) -> usize {
+        self.steering_queue.borrow().len()
+    }
+
+    pub fn pending_follow_up_count(&self) -> usize {
+        self.follow_up_queue.borrow().len()
+    }
+
     pub fn abort(&self) {
         self.aborted.set(true);
         let mut state = self.state.borrow_mut();

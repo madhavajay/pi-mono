@@ -1,427 +1,387 @@
-use pi::test_port::fail;
+use pi::coding_agent::{parse_command_args, substitute_args};
 
 // Source: packages/coding-agent/test/slash-commands.test.ts
 
 #[test]
 fn should_replace_arguments_with_all_args_joined() {
-    fail(
-        "packages/coding-agent/test/slash-commands.test.ts",
-        "should replace $ARGUMENTS with all args joined",
+    assert_eq!(
+        substitute_args("Test: $ARGUMENTS", &["a", "b", "c"]),
+        "Test: a b c"
     );
 }
 
 #[test]
 fn should_replace_with_all_args_joined() {
-    fail(
-        "packages/coding-agent/test/slash-commands.test.ts",
-        "should replace $@ with all args joined",
-    );
+    assert_eq!(substitute_args("Test: $@", &["a", "b", "c"]), "Test: a b c");
 }
 
 #[test]
 fn should_replace_and_arguments_identically() {
-    fail(
-        "packages/coding-agent/test/slash-commands.test.ts",
-        "should replace $@ and $ARGUMENTS identically",
+    let args = vec!["foo", "bar", "baz"];
+    assert_eq!(
+        substitute_args("Test: $@", &args),
+        substitute_args("Test: $ARGUMENTS", &args)
     );
 }
 
 #[test]
 fn should_not_recursively_substitute_patterns_in_argument_values() {
-    fail(
-        "packages/coding-agent/test/slash-commands.test.ts",
-        "should NOT recursively substitute patterns in argument values",
+    assert_eq!(
+        substitute_args("$ARGUMENTS", &["$1", "$ARGUMENTS"]),
+        "$1 $ARGUMENTS"
     );
+    assert_eq!(substitute_args("$@", &["$100", "$1"]), "$100 $1");
+    assert_eq!(substitute_args("$ARGUMENTS", &["$100", "$1"]), "$100 $1");
 }
 
 #[test]
 fn should_support_mixed_1_2_and_arguments() {
-    fail(
-        "packages/coding-agent/test/slash-commands.test.ts",
-        "should support mixed $1, $2, and $ARGUMENTS",
+    assert_eq!(
+        substitute_args("$1: $ARGUMENTS", &["prefix", "a", "b"]),
+        "prefix: prefix a b"
     );
 }
 
 #[test]
 fn should_support_mixed_1_2_and() {
-    fail(
-        "packages/coding-agent/test/slash-commands.test.ts",
-        "should support mixed $1, $2, and $@",
+    assert_eq!(
+        substitute_args("$1: $@", &["prefix", "a", "b"]),
+        "prefix: prefix a b"
     );
 }
 
 #[test]
 fn should_handle_empty_arguments_array_with_arguments() {
-    fail(
-        "packages/coding-agent/test/slash-commands.test.ts",
-        "should handle empty arguments array with $ARGUMENTS",
-    );
+    let empty: Vec<&str> = Vec::new();
+    assert_eq!(substitute_args("Test: $ARGUMENTS", &empty), "Test: ");
 }
 
 #[test]
 fn should_handle_empty_arguments_array_with() {
-    fail(
-        "packages/coding-agent/test/slash-commands.test.ts",
-        "should handle empty arguments array with $@",
-    );
+    let empty: Vec<&str> = Vec::new();
+    assert_eq!(substitute_args("Test: $@", &empty), "Test: ");
 }
 
 #[test]
 fn should_handle_empty_arguments_array_with_1() {
-    fail(
-        "packages/coding-agent/test/slash-commands.test.ts",
-        "should handle empty arguments array with $1",
-    );
+    let empty: Vec<&str> = Vec::new();
+    assert_eq!(substitute_args("Test: $1", &empty), "Test: ");
 }
 
 #[test]
 fn should_handle_multiple_occurrences_of_arguments() {
-    fail(
-        "packages/coding-agent/test/slash-commands.test.ts",
-        "should handle multiple occurrences of $ARGUMENTS",
+    assert_eq!(
+        substitute_args("$ARGUMENTS and $ARGUMENTS", &["a", "b"]),
+        "a b and a b"
     );
 }
 
 #[test]
 fn should_handle_multiple_occurrences_of() {
-    fail(
-        "packages/coding-agent/test/slash-commands.test.ts",
-        "should handle multiple occurrences of $@",
-    );
+    assert_eq!(substitute_args("$@ and $@", &["a", "b"]), "a b and a b");
 }
 
 #[test]
 fn should_handle_mixed_occurrences_of_and_arguments() {
-    fail(
-        "packages/coding-agent/test/slash-commands.test.ts",
-        "should handle mixed occurrences of $@ and $ARGUMENTS",
+    assert_eq!(
+        substitute_args("$@ and $ARGUMENTS", &["a", "b"]),
+        "a b and a b"
     );
 }
 
 #[test]
 fn should_handle_special_characters_in_arguments() {
-    fail(
-        "packages/coding-agent/test/slash-commands.test.ts",
-        "should handle special characters in arguments",
+    assert_eq!(
+        substitute_args("$1 $2: $ARGUMENTS", &["arg100", "@user"]),
+        "arg100 @user: arg100 @user"
     );
 }
 
 #[test]
 fn should_handle_out_of_range_numbered_placeholders() {
-    fail(
-        "packages/coding-agent/test/slash-commands.test.ts",
-        "should handle out-of-range numbered placeholders",
-    );
+    assert_eq!(substitute_args("$1 $2 $3 $4 $5", &["a", "b"]), "a b   ");
 }
 
 #[test]
 fn should_handle_unicode_characters() {
-    fail(
-        "packages/coding-agent/test/slash-commands.test.ts",
-        "should handle unicode characters",
+    assert_eq!(
+        substitute_args("$ARGUMENTS", &["日本語", "🎉", "café"]),
+        "日本語 🎉 café"
     );
 }
 
 #[test]
 fn should_preserve_newlines_and_tabs_in_argument_values() {
-    fail(
-        "packages/coding-agent/test/slash-commands.test.ts",
-        "should preserve newlines and tabs in argument values",
+    assert_eq!(
+        substitute_args("$1 $2", &["line1\nline2", "tab\tthere"]),
+        "line1\nline2 tab\tthere"
     );
 }
 
 #[test]
 fn should_handle_consecutive_dollar_patterns() {
-    fail(
-        "packages/coding-agent/test/slash-commands.test.ts",
-        "should handle consecutive dollar patterns",
-    );
+    assert_eq!(substitute_args("$1$2", &["a", "b"]), "ab");
 }
 
 #[test]
 fn should_handle_quoted_arguments_with_spaces() {
-    fail(
-        "packages/coding-agent/test/slash-commands.test.ts",
-        "should handle quoted arguments with spaces",
+    assert_eq!(
+        substitute_args("$ARGUMENTS", &["first arg", "second arg"]),
+        "first arg second arg"
     );
 }
 
 #[test]
 fn should_handle_single_argument_with_arguments() {
-    fail(
-        "packages/coding-agent/test/slash-commands.test.ts",
-        "should handle single argument with $ARGUMENTS",
-    );
+    assert_eq!(substitute_args("Test: $ARGUMENTS", &["only"]), "Test: only");
 }
 
 #[test]
 fn should_handle_single_argument_with() {
-    fail(
-        "packages/coding-agent/test/slash-commands.test.ts",
-        "should handle single argument with $@",
-    );
+    assert_eq!(substitute_args("Test: $@", &["only"]), "Test: only");
 }
 
 #[test]
 fn should_handle_0_zero_index() {
-    fail(
-        "packages/coding-agent/test/slash-commands.test.ts",
-        "should handle $0 (zero index)",
-    );
+    assert_eq!(substitute_args("$0", &["a", "b"]), "");
 }
 
 #[test]
 fn should_handle_decimal_number_in_pattern_only_integer_part_matches() {
-    fail(
-        "packages/coding-agent/test/slash-commands.test.ts",
-        "should handle decimal number in pattern (only integer part matches)",
-    );
+    assert_eq!(substitute_args("$1.5", &["a"]), "a.5");
 }
 
 #[test]
 fn should_handle_arguments_as_part_of_word() {
-    fail(
-        "packages/coding-agent/test/slash-commands.test.ts",
-        "should handle $ARGUMENTS as part of word",
-    );
+    assert_eq!(substitute_args("pre$ARGUMENTS", &["a", "b"]), "prea b");
 }
 
 #[test]
 fn should_handle_as_part_of_word() {
-    fail(
-        "packages/coding-agent/test/slash-commands.test.ts",
-        "should handle $@ as part of word",
-    );
+    assert_eq!(substitute_args("pre$@", &["a", "b"]), "prea b");
 }
 
 #[test]
 fn should_handle_empty_arguments_in_middle_of_list() {
-    fail(
-        "packages/coding-agent/test/slash-commands.test.ts",
-        "should handle empty arguments in middle of list",
-    );
+    assert_eq!(substitute_args("$ARGUMENTS", &["a", "", "c"]), "a  c");
 }
 
 #[test]
 fn should_handle_trailing_and_leading_spaces_in_arguments() {
-    fail(
-        "packages/coding-agent/test/slash-commands.test.ts",
-        "should handle trailing and leading spaces in arguments",
+    assert_eq!(
+        substitute_args("$ARGUMENTS", &["  leading  ", "trailing  "]),
+        "  leading   trailing  "
     );
 }
 
 #[test]
 fn should_handle_argument_containing_pattern_partially() {
-    fail(
-        "packages/coding-agent/test/slash-commands.test.ts",
-        "should handle argument containing pattern partially",
+    assert_eq!(
+        substitute_args("Prefix $ARGUMENTS suffix", &["ARGUMENTS"]),
+        "Prefix ARGUMENTS suffix"
     );
 }
 
 #[test]
 fn should_handle_non_matching_patterns() {
-    fail(
-        "packages/coding-agent/test/slash-commands.test.ts",
-        "should handle non-matching patterns",
-    );
+    assert_eq!(substitute_args("$A $$ $ $ARGS", &["a"]), "$A $$ $ $ARGS");
 }
 
 #[test]
 fn should_handle_case_variations_case_sensitive() {
-    fail(
-        "packages/coding-agent/test/slash-commands.test.ts",
-        "should handle case variations (case-sensitive)",
+    assert_eq!(
+        substitute_args("$arguments $Arguments $ARGUMENTS", &["a", "b"]),
+        "$arguments $Arguments a b"
     );
 }
 
 #[test]
 fn should_handle_both_syntaxes_in_same_command_with_same_result() {
-    fail(
-        "packages/coding-agent/test/slash-commands.test.ts",
-        "should handle both syntaxes in same command with same result",
-    );
+    let args = vec!["x", "y", "z"];
+    let result1 = substitute_args("$@ and $ARGUMENTS", &args);
+    let result2 = substitute_args("$ARGUMENTS and $@", &args);
+    assert_eq!(result1, result2);
+    assert_eq!(result1, "x y z and x y z");
 }
 
 #[test]
 fn should_handle_very_long_argument_lists() {
-    fail(
-        "packages/coding-agent/test/slash-commands.test.ts",
-        "should handle very long argument lists",
-    );
+    let args = (0..100).map(|i| format!("arg{i}")).collect::<Vec<_>>();
+    let result = substitute_args("$ARGUMENTS", &args);
+    assert_eq!(result, args.join(" "));
 }
 
 #[test]
 fn should_handle_numbered_placeholders_with_single_digit() {
-    fail(
-        "packages/coding-agent/test/slash-commands.test.ts",
-        "should handle numbered placeholders with single digit",
-    );
+    assert_eq!(substitute_args("$1 $2 $3", &["a", "b", "c"]), "a b c");
 }
 
 #[test]
 fn should_handle_numbered_placeholders_with_multiple_digits() {
-    fail(
-        "packages/coding-agent/test/slash-commands.test.ts",
-        "should handle numbered placeholders with multiple digits",
-    );
+    let args = (0..15).map(|i| format!("val{i}")).collect::<Vec<_>>();
+    assert_eq!(substitute_args("$10 $12 $15", &args), "val9 val11 val14");
 }
 
 #[test]
 fn should_handle_escaped_dollar_signs_literal_backslash_preserved() {
-    fail(
-        "packages/coding-agent/test/slash-commands.test.ts",
-        "should handle escaped dollar signs (literal backslash preserved)",
-    );
+    let empty: Vec<&str> = Vec::new();
+    assert_eq!(substitute_args("Price: \\$100", &empty), "Price: \\");
 }
 
 #[test]
 fn should_handle_mixed_numbered_and_wildcard_placeholders() {
-    fail(
-        "packages/coding-agent/test/slash-commands.test.ts",
-        "should handle mixed numbered and wildcard placeholders",
+    assert_eq!(
+        substitute_args("$1: $@ ($ARGUMENTS)", &["first", "second", "third"]),
+        "first: first second third (first second third)"
     );
 }
 
 #[test]
 fn should_handle_command_with_no_placeholders() {
-    fail(
-        "packages/coding-agent/test/slash-commands.test.ts",
-        "should handle command with no placeholders",
+    assert_eq!(
+        substitute_args("Just plain text", &["a", "b"]),
+        "Just plain text"
     );
 }
 
 #[test]
 fn should_handle_command_with_only_placeholders() {
-    fail(
-        "packages/coding-agent/test/slash-commands.test.ts",
-        "should handle command with only placeholders",
-    );
+    assert_eq!(substitute_args("$1 $2 $@", &["a", "b", "c"]), "a b a b c");
 }
 
 #[test]
 fn should_parse_simple_space_separated_arguments() {
-    fail(
-        "packages/coding-agent/test/slash-commands.test.ts",
-        "should parse simple space-separated arguments",
+    assert_eq!(
+        parse_command_args("a b c"),
+        vec!["a".to_string(), "b".to_string(), "c".to_string()]
     );
 }
 
 #[test]
 fn should_parse_quoted_arguments_with_spaces() {
-    fail(
-        "packages/coding-agent/test/slash-commands.test.ts",
-        "should parse quoted arguments with spaces",
+    assert_eq!(
+        parse_command_args("\"first arg\" second"),
+        vec!["first arg".to_string(), "second".to_string()]
     );
 }
 
 #[test]
 fn should_parse_single_quoted_arguments() {
-    fail(
-        "packages/coding-agent/test/slash-commands.test.ts",
-        "should parse single-quoted arguments",
+    assert_eq!(
+        parse_command_args("'first arg' second"),
+        vec!["first arg".to_string(), "second".to_string()]
     );
 }
 
 #[test]
 fn should_parse_mixed_quote_styles() {
-    fail(
-        "packages/coding-agent/test/slash-commands.test.ts",
-        "should parse mixed quote styles",
+    assert_eq!(
+        parse_command_args("\"double\" 'single' \"double again\""),
+        vec![
+            "double".to_string(),
+            "single".to_string(),
+            "double again".to_string()
+        ]
     );
 }
 
 #[test]
 fn should_handle_empty_string() {
-    fail(
-        "packages/coding-agent/test/slash-commands.test.ts",
-        "should handle empty string",
-    );
+    assert_eq!(parse_command_args(""), Vec::<String>::new());
 }
 
 #[test]
 fn should_handle_extra_spaces() {
-    fail(
-        "packages/coding-agent/test/slash-commands.test.ts",
-        "should handle extra spaces",
+    assert_eq!(
+        parse_command_args("a  b   c"),
+        vec!["a".to_string(), "b".to_string(), "c".to_string()]
     );
 }
 
 #[test]
 fn should_handle_tabs_as_separators() {
-    fail(
-        "packages/coding-agent/test/slash-commands.test.ts",
-        "should handle tabs as separators",
+    assert_eq!(
+        parse_command_args("a\tb\tc"),
+        vec!["a".to_string(), "b".to_string(), "c".to_string()]
     );
 }
 
 #[test]
 fn should_handle_quoted_empty_string() {
-    fail(
-        "packages/coding-agent/test/slash-commands.test.ts",
-        "should handle quoted empty string",
-    );
+    assert_eq!(parse_command_args("\"\" \" \""), vec![" ".to_string()]);
 }
 
 #[test]
 fn should_handle_arguments_with_special_characters() {
-    fail(
-        "packages/coding-agent/test/slash-commands.test.ts",
-        "should handle arguments with special characters",
+    assert_eq!(
+        parse_command_args("$100 @user #tag"),
+        vec!["$100".to_string(), "@user".to_string(), "#tag".to_string()]
     );
 }
 
 #[test]
 fn should_handle_newlines_in_arguments() {
-    fail(
-        "packages/coding-agent/test/slash-commands.test.ts",
-        "should handle newlines in arguments",
+    assert_eq!(
+        parse_command_args("\"line1\nline2\" second"),
+        vec!["line1\nline2".to_string(), "second".to_string()]
     );
 }
 
 #[test]
 fn should_handle_escaped_quotes_inside_quoted_strings() {
-    fail(
-        "packages/coding-agent/test/slash-commands.test.ts",
-        "should handle escaped quotes inside quoted strings",
+    assert_eq!(
+        parse_command_args("\"quoted \\\"text\\\"\""),
+        vec!["quoted \\text\\".to_string()]
     );
 }
 
 #[test]
 fn should_handle_trailing_spaces() {
-    fail(
-        "packages/coding-agent/test/slash-commands.test.ts",
-        "should handle trailing spaces",
+    assert_eq!(
+        parse_command_args("a b c   "),
+        vec!["a".to_string(), "b".to_string(), "c".to_string()]
     );
 }
 
 #[test]
 fn should_handle_leading_spaces() {
-    fail(
-        "packages/coding-agent/test/slash-commands.test.ts",
-        "should handle leading spaces",
+    assert_eq!(
+        parse_command_args("   a b c"),
+        vec!["a".to_string(), "b".to_string(), "c".to_string()]
     );
 }
 
 #[test]
 fn should_parse_and_substitute_together_correctly() {
-    fail(
-        "packages/coding-agent/test/slash-commands.test.ts",
-        "should parse and substitute together correctly",
+    let input = "Button \"onClick handler\" \"disabled support\"";
+    let args = parse_command_args(input);
+    let template = "Create component $1 with features: $ARGUMENTS";
+    let result = substitute_args(template, &args);
+    assert_eq!(
+        result,
+        "Create component Button with features: Button onClick handler disabled support"
     );
 }
 
 #[test]
 fn should_handle_the_example_from_readme() {
-    fail(
-        "packages/coding-agent/test/slash-commands.test.ts",
-        "should handle the example from README",
+    let input = "Button \"onClick handler\" \"disabled support\"";
+    let args = parse_command_args(input);
+    let template = "Create a React component named $1 with features: $ARGUMENTS";
+    let result = substitute_args(template, &args);
+    assert_eq!(
+        result,
+        "Create a React component named Button with features: Button onClick handler disabled support"
     );
 }
 
 #[test]
 fn should_produce_same_result_with_and_arguments() {
-    fail(
-        "packages/coding-agent/test/slash-commands.test.ts",
-        "should produce same result with $@ and $ARGUMENTS",
+    let args = parse_command_args("feature1 feature2 feature3");
+    let template1 = "Implement: $@";
+    let template2 = "Implement: $ARGUMENTS";
+    assert_eq!(
+        substitute_args(template1, &args),
+        substitute_args(template2, &args)
     );
 }

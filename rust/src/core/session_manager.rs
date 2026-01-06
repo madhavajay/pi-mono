@@ -827,11 +827,17 @@ impl SessionManager {
                     content.push('\n');
                 }
             }
+            if let Some(parent) = path.parent() {
+                let _ = fs::create_dir_all(parent);
+            }
             if let Ok(mut file) = File::create(path) {
                 let _ = file.write_all(content.as_bytes());
             }
             self.flushed = true;
         } else if let Ok(line) = serde_json::to_string(entry) {
+            if let Some(parent) = path.parent() {
+                let _ = fs::create_dir_all(parent);
+            }
             if let Ok(mut file) = OpenOptions::new().append(true).create(true).open(path) {
                 let _ = writeln!(file, "{}", line);
             }
@@ -964,6 +970,14 @@ impl SessionManager {
         })
     }
 
+    pub fn get_session_id(&self) -> String {
+        self.session_id.clone()
+    }
+
+    pub fn get_session_file(&self) -> Option<PathBuf> {
+        self.session_file.clone()
+    }
+
     pub fn get_leaf_id(&self) -> Option<String> {
         self.leaf_id.clone()
     }
@@ -1032,6 +1046,13 @@ impl SessionManager {
     }
 
     pub fn build_session_context(&self) -> SessionContext {
+        if self.leaf_id.is_none() && !self.by_id.is_empty() {
+            return SessionContext {
+                messages: Vec::new(),
+                thinking_level: "off".to_string(),
+                model: None,
+            };
+        }
         build_session_context(&self.get_entries(), self.leaf_id.as_deref())
     }
 
@@ -1043,23 +1064,41 @@ impl SessionManager {
         Ok(())
     }
 
+    pub fn reset_leaf(&mut self) {
+        self.leaf_id = None;
+    }
+
+    pub fn get_children(&self, parent_id: &str) -> Vec<SessionEntry> {
+        self.by_id
+            .values()
+            .filter(|entry| entry.parent_id() == Some(parent_id))
+            .cloned()
+            .collect()
+    }
+
     pub fn branch_with_summary(
         &mut self,
-        branch_from_id: &str,
+        branch_from_id: Option<&str>,
         summary: &str,
+        details: Option<Value>,
+        from_hook: Option<bool>,
     ) -> Result<String, String> {
-        if !self.by_id.contains_key(branch_from_id) {
-            return Err(format!("Entry {} not found", branch_from_id));
+        if let Some(branch_from_id) = branch_from_id {
+            if !self.by_id.contains_key(branch_from_id) {
+                return Err(format!("Entry {} not found", branch_from_id));
+            }
+            self.leaf_id = Some(branch_from_id.to_string());
+        } else {
+            self.leaf_id = None;
         }
-        self.leaf_id = Some(branch_from_id.to_string());
         let entry = BranchSummaryEntry {
             id: self.next_id(),
-            parent_id: Some(branch_from_id.to_string()),
+            parent_id: branch_from_id.map(|value| value.to_string()),
             timestamp: Utc::now().to_rfc3339(),
-            from_id: branch_from_id.to_string(),
+            from_id: branch_from_id.unwrap_or("root").to_string(),
             summary: summary.to_string(),
-            details: None,
-            from_hook: None,
+            details,
+            from_hook,
         };
         Ok(self.append_entry(SessionEntry::BranchSummary(entry)))
     }

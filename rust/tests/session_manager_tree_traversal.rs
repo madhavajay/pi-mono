@@ -300,7 +300,7 @@ fn branch_with_summary_inserts_entry() {
     let _ = session.append_message(user_msg("3"));
 
     let summary_id = session
-        .branch_with_summary(&id1, "Summary of abandoned work")
+        .branch_with_summary(Some(&id1), "Summary of abandoned work", None, None)
         .unwrap();
     assert_eq!(session.get_leaf_id(), Some(summary_id));
 
@@ -317,7 +317,7 @@ fn branch_with_summary_throws_for_nonexistent() {
     let mut session = SessionManager::in_memory();
     session.append_message(user_msg("hello"));
     assert!(session
-        .branch_with_summary("nonexistent", "summary")
+        .branch_with_summary(Some("nonexistent"), "summary", None, None)
         .is_err());
 }
 
