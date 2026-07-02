@@ -8,6 +8,7 @@
 import type { AgentMessage, StreamFn, ThinkingLevel } from "@earendil-works/pi-agent-core";
 import type { AssistantMessage, Context, Model, SimpleStreamOptions, Usage } from "@earendil-works/pi-ai";
 import { completeSimple } from "@earendil-works/pi-ai";
+import { emitCoveInstrumentationEvent, summarizeCoveMessages } from "../cove-instrumentation.ts";
 import {
 	convertToLlm,
 	createBranchSummaryMessage,
@@ -765,6 +766,23 @@ export async function compact(
 		settings,
 	} = preparation;
 
+	const startedAt = Date.now();
+	const algorithm = isSplitTurn ? "history-summary+turn-prefix-summary" : "history-summary";
+	emitCoveInstrumentationEvent("compaction_started", {
+		algorithm,
+		isSplitTurn,
+		tokensBefore,
+		previousSummaryChars: previousSummary?.length ?? 0,
+		settings: {
+			keepRecentTokens: settings.keepRecentTokens,
+			reserveTokens: settings.reserveTokens,
+		},
+		before: {
+			messagesToSummarize: summarizeCoveMessages(messagesToSummarize),
+			turnPrefixMessages: summarizeCoveMessages(turnPrefixMessages),
+		},
+	});
+
 	// Generate summaries (can be parallel if both needed) and merge into one
 	let summary: string;
 
@@ -821,6 +839,19 @@ export async function compact(
 	if (!firstKeptEntryId) {
 		throw new Error("First kept entry has no UUID - session may need migration");
 	}
+
+	emitCoveInstrumentationEvent("compaction_finished", {
+		algorithm,
+		durationMs: Date.now() - startedAt,
+		tokensBefore,
+		firstKeptEntryId,
+		after: {
+			summaryChars: summary.length,
+			summaryApproxTokens: Math.ceil(summary.length / 4),
+			readFileCount: readFiles.length,
+			modifiedFileCount: modifiedFiles.length,
+		},
+	});
 
 	return {
 		summary,

@@ -6,6 +6,7 @@
  * Test with: npx tsx src/cli-new.ts [args...]
  */
 import { APP_NAME } from "./config.ts";
+import { emitCoveInstrumentationEvent } from "./core/cove-instrumentation.ts";
 import { configureHttpDispatcher } from "./core/http-dispatcher.ts";
 import { main } from "./main.ts";
 
@@ -16,5 +17,11 @@ process.emitWarning = (() => {}) as typeof process.emitWarning;
 // Configure undici's global dispatcher before provider SDKs issue requests.
 // Runtime settings are applied once SettingsManager has loaded global/project settings.
 configureHttpDispatcher();
+
+emitCoveInstrumentationEvent("pi_source_harness_loaded", {
+	pid: process.pid,
+	node: process.version,
+	argvCount: process.argv.length,
+});
 
 main(process.argv.slice(2));
